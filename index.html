@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gura NotesKeeper</title>
+  <link rel="stylesheet" href="lib/bootstrap.min.css">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css?family=Sacramento|Ubuntu|Nerko+One|Josefin+Sans|Rubik|IBM+Plex+Sans">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+  <script src="lib/tailwind.min.css.js"></script>
+  <script src="src/react.development.js"></script>
+  <script src="src/react-dom.development.js"></script>
+  <script src="src/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+
+const API_BASE = "https://guranotesbackend-production.up.railway.app"; // change if needed
+
+// Token helpers
+const saveToken = t => localStorage.setItem("gura_token", t);
+const getToken = () => localStorage.getItem("gura_token");
+const clearToken = () => localStorage.removeItem("gura_token");
+const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
+
+// API calls
+async function apiRegister(email, password) {
+  const res = await fetch(`${API_BASE}/api/register`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  return res.json();
+}
+async function apiCreateDrawer(drawerName, password) {
+  const res = await fetch(`${API_BASE}/api/drawers/create`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drawerName, password })
+  });
+  return res.json();
+}
+async function apiLogin(email, password) {
+  const res = await fetch(`${API_BASE}/api/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  return res.json();
+}
+async function apiLoginDrawer(drawerName, password) {
+  const res = await fetch(`${API_BASE}/api/drawers/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drawerName, password })
+  });
+  return res.json();
+}
+async function apiFetchNotes() {
+  const res = await fetch(`${API_BASE}/api/notes`, { headers: authHeaders() });
+  return res.json();
+}
+async function apiCreateNote(title = "", content = "") {
+  const res = await fetch(`${API_BASE}/api/notes`, {
+    method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ title, content })
+  });
+  return res.json();
+}
+async function apiUpdateNote(id, title, content) {
+  const res = await fetch(`${API_BASE}/api/notes/${id}`, {
+    method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ title, content })
+  });
+  return res.json();
+}
+async function apiDeleteNote(id) {
+  const res = await fetch(`${API_BASE}/api/notes/${id}`, {
+    method: "DELETE", headers: authHeaders()
+  });
+  return res.json();
+}
+
+function getTimestamp() {
+  const now = new Date();
+  return now.toISOString().slice(0, 16).replace("T", " ");
+}
+
+function App() {
+  const [notes, setNotes] = React.useState([]);
+  const [selectedNote, setSelectedNote] = React.useState(null);
+  const [tempNote, setTempNote] = React.useState(null);
+  const [authType, setAuthType] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const year = new Date().getFullYear();
+  const hour = new Date().getHours();
+  let greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  React.useEffect(() => {
+    if (getToken()) {
+      loadNotes();
+    }
+  }, []);
+
+  async function loadNotes() {
+    setLoading(true);
+    const res = await apiFetchNotes();
+    setLoading(false);
+    if (Array.isArray(res)) setNotes(res);
+    else alert(res.error || "Failed to load notes");
+  }
+
+  async function handleLoginUser(e) {
+    e.preventDefault();
+    const email = e.target.email.value;
+    const password = e.target.password.value;
+    const res = await apiLogin(email, password);
+    if (res.token) {
+      saveToken(res.token);
+      setAuthType("user");
+      await loadNotes();
+    } else alert(res.error || "Login failed");
+  }
+
+  async function handleLoginDrawer(e) {
+    e.preventDefault();
+    const name = e.target.drawerName.value;
+    const password = e.target.password.value;
+    const res = await apiLoginDrawer(name, password);
+    if (res.token) {
+      saveToken(res.token);
+      setAuthType("drawer");
+      await loadNotes();
+    } else alert(res.error || "Drawer login failed");
+  }
+
+  async function handleRegisterUser(e) {
+  e.preventDefault();
+  const email = e.target.email.value;
+  const password = e.target.password.value;
+  const res = await apiRegister(email, password);
+  if (res.token) {
+    saveToken(res.token);
+    setAuthType("user");
+    await loadNotes();
+  } else {
+    alert(res.error || "Registration failed");
+  }
+}
+
+async function handleCreateDrawer(e) {
+  e.preventDefault();
+  const drawerName = e.target.drawerName.value;
+  const password = e.target.password.value;
+  const res = await apiCreateDrawer(drawerName, password);
+  if (res.token) {
+    saveToken(res.token);
+    setAuthType("drawer");
+    await loadNotes();
+  } else {
+    alert(res.error || "Drawer creation failed");
+  }
+}
+
+
+  async function createNote() {
+    const note = await apiCreateNote("", "");
+    if (note && note._id) {
+      setNotes(prev => [note, ...prev]);
+      setSelectedNote(note);
+      setTempNote({ ...note });
+    }
+  }
+
+  async function saveNote(localNote) {
+    const updated = await apiUpdateNote(localNote._id, localNote.title, localNote.content);
+    setNotes(prev => prev.map(n => n._id === updated._id ? updated : n));
+    setSelectedNote(null);
+    setTempNote(null);
+  }
+
+  async function deleteNote(id) {
+    await apiDeleteNote(id);
+    setNotes(prev => prev.filter(n => n._id !== id));
+    setSelectedNote(null);
+    setTempNote(null);
+  }
+
+  function logout() {
+    clearToken();
+    setNotes([]);
+    setAuthType(null);
+  }
+
+  function Header() {
+    return (
+      <header className="bg-gray-800 text-white p-3 shadow d-flex justify-content-between align-items-center min">
+        <h1 className="text-2xl font-bold">Notes Keeper</h1>
+        {authType && <button className="btn btn-sm btn-warning" onClick={logout}>Logout</button>}
+      </header>
+    );
+  }
+
+  function Footer() {
+    return (
+      <footer className="text-secondary p-2">
+        <p className="text-center">&copy; {year} Gura-io Note Keeper</p>
+      </footer>
+    );
+  }
+
+  function NoteCard({ note }) {
+    return (
+      <div className="noteCard bg-white p-3 shadow-sm rounded h-100 cursor-pointer"
+        onClick={() => { setSelectedNote(note); setTempNote({ ...note }); }}>
+        <h5 className="fw-bold">{note.title || "(No title)"}</h5>
+        <p className="text-truncate">{note.content || "(Empty note)"}</p>
+        <small className="text-muted">Created: {note.createdAt}</small>
+      </div>
+    );
+  }
+
+  function Overlay({ note }) {
+    const [localNote, setLocalNote] = React.useState(note);
+    React.useEffect(() => { setLocalNote(note); }, [note]);
+    if (!note) return null;
+    return (
+      <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex justify-content-center align-items-center"
+        style={{ zIndex: 1050 }}
+        onClick={() => saveNote(localNote)}>
+        <div className="bg-white p-4 rounded shadow-lg"
+          style={{ width: "90%", maxWidth: "600px" }}
+          onClick={(e) => e.stopPropagation()}>
+          <input className="form-control mb-2 fw-bold" placeholder="Note title"
+            value={localNote.title} onChange={(e) => setLocalNote({ ...localNote, title: e.target.value })} />
+          <textarea className="form-control mb-2" placeholder="Note content" rows="8"
+            value={localNote.content} onChange={(e) => setLocalNote({ ...localNote, content: e.target.value })}></textarea>
+          <small className="text-muted d-block mb-3">Created at: {localNote.createdAt}</small>
+          <div className="d-flex justify-content-between">
+            <button className="btn btn-danger" onClick={() => deleteNote(localNote._id)}>Delete</button>
+            <button className="btn btn-secondary" onClick={() => saveNote(localNote)}>Save & Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function LoginForms() {
+    return (
+      <div className="container my-4">
+        <div className="row">
+          <div className="col-md-6">
+            <h5>User Login</h5>
+            <form onSubmit={handleLoginUser}>
+              <input name="email" className="form-control mb-2" placeholder="Email" />
+              <input name="password" type="password" className="form-control mb-2" placeholder="Password" />
+              <button className="btn btn-primary w-100">Login</button>
+            </form>
+            <h5 className="mt-4">Register User</h5>
+            <form onSubmit={handleRegisterUser}>
+              <input name="email" className="form-control mb-2" placeholder="Email" />
+              <input name="password" type="password" className="form-control mb-2" placeholder="Password" />
+              <button className="btn btn-success w-100">Register</button>
+            </form>
+          </div>
+          <div className="col-md-6">
+            <h5>Drawer Login</h5>
+            <form onSubmit={handleLoginDrawer}>
+              <input name="drawerName" className="form-control mb-2" placeholder="Drawer Name" />
+              <input name="password" type="password" className="form-control mb-2" placeholder="Password" />
+              <button className="btn btn-secondary w-100">Access Drawer</button>
+            </form>
+            <h5 className="mt-4">Create Drawer</h5>
+            <form onSubmit={handleCreateDrawer}>
+              <input name="drawerName" className="form-control mb-2" placeholder="Drawer Name" />
+              <input name="password" type="password" className="form-control mb-2" placeholder="Password" />
+              <button className="btn btn-success w-100">Create Drawer</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="body bg-gray-100 min-vh-100">
+      <Header />
+      {!getToken() ? (
+        <LoginForms />
+      ) : (
+        <>
+          <h1 className="greeting p-1 pt-2">{greeting}!</h1>
+          {loading && <p className="text-center">Loading notes...</p>}
+          <div className="container px-3">
+            <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+              {notes.map(note => (
+                <div className="col" key={note._id}>
+                  <NoteCard note={note} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-center mt-4">
+            <button className="btn btn-primary" onClick={createNote}>+ Add Note</button>
+          </div>
+          <Footer />
+          <Overlay note={selectedNote} />
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById("root"));
+</script>
+</body>
+</html>

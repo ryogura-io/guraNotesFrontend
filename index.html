@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gura NotesKeeper</title>
   <link rel="stylesheet" href="lib/bootstrap.min.css">
   <link rel="stylesheet"
@@ -12,6 +11,25 @@
   <script src="src/react.development.js"></script>
   <script src="src/react-dom.development.js"></script>
   <script src="src/babel.min.js"></script>
+  <style>
+    .addnote {
+      background-color: rgb(26, 26, 34);
+    }
+  
+    .addnote:hover {
+      background-color: rgb(36, 36, 46);
+    }
+  
+    .zoom-hover {
+      transition: transform 0.3s ease;
+      /* smooth animation */
+    }
+  
+    .zoom-hover:hover {
+      transform: scale(1.05);
+      /* zoom in by 5% */
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -97,10 +115,19 @@ function App() {
   let greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   React.useEffect(() => {
-    if (getToken()) {
-      loadNotes();
+    const token = getToken();
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1])); // decode JWT
+        setAuthType(payload.type); // restores "user" or "drawer"
+        loadNotes();
+      } catch (err) {
+        console.error("Invalid token:", err);
+        clearToken();
+      }
     }
   }, []);
+
 
   async function loadNotes() {
     setLoading(true);
@@ -172,6 +199,11 @@ async function handleCreateDrawer(e) {
     }
   }
 
+  function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleString(); // e.g., "8/13/2025, 10:10:35 AM"
+  }
+
   async function saveNote(localNote) {
     const updated = await apiUpdateNote(localNote._id, localNote.title, localNote.content);
     setNotes(prev => prev.map(n => n._id === updated._id ? updated : n));
@@ -211,11 +243,12 @@ async function handleCreateDrawer(e) {
 
   function NoteCard({ note }) {
     return (
-      <div className="noteCard bg-white p-3 shadow-sm rounded h-100 cursor-pointer"
+      <div className="noteCard bg-white p-3 shadow-sm rounded h-100 cursor-pointer zoom-hover"
         onClick={() => { setSelectedNote(note); setTempNote({ ...note }); }}>
         <h5 className="fw-bold">{note.title || "(No title)"}</h5>
         <p className="text-truncate">{note.content || "(Empty note)"}</p>
-        <small className="text-muted">Created: {note.createdAt}</small>
+        <small className="text-muted">Created: {formatDate(note.createdAt)}</small>
+
       </div>
     );
   }
@@ -235,7 +268,7 @@ async function handleCreateDrawer(e) {
             value={localNote.title} onChange={(e) => setLocalNote({ ...localNote, title: e.target.value })} />
           <textarea className="form-control mb-2" placeholder="Note content" rows="8"
             value={localNote.content} onChange={(e) => setLocalNote({ ...localNote, content: e.target.value })}></textarea>
-          <small className="text-muted d-block mb-3">Created at: {localNote.createdAt}</small>
+          <small className="text-muted d-block mb-3">Created at: {formatDate(localNote.createdAt)}</small>
           <div className="d-flex justify-content-between">
             <button className="btn btn-danger" onClick={() => deleteNote(localNote._id)}>Delete</button>
             <button className="btn btn-secondary" onClick={() => saveNote(localNote)}>Save & Close</button>
@@ -301,7 +334,7 @@ async function handleCreateDrawer(e) {
             </div>
           </div>
           <div className="flex justify-center mt-4">
-            <button className="btn btn-primary" onClick={createNote}>+ Add Note</button>
+            <button className="btn addnote text-light" onClick={createNote}>+ Add Note</button>
           </div>
           <Footer />
           <Overlay note={selectedNote} />
@@ -315,4 +348,3 @@ ReactDOM.render(<App />, document.getElementById("root"));
 </script>
 </body>
 </html>
-

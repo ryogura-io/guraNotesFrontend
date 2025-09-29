@@ -1,0 +1,1 @@
+A react based version of the front end of the Gura Notes project.
